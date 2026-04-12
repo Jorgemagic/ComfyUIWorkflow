@@ -12,9 +12,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="ComfyStreamWorkflow\**\*.cs" />
+    <EmbeddedResource Remove="ComfyStreamWorkflow\**" />
+    <None Remove="ComfyStreamWorkflow\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Text2Img.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="ComfyStreamWorkflow\ComfyStreamWorkflow.csproj" />
   </ItemGroup>
 
 </Project>

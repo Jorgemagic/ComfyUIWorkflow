@@ -5,6 +5,7 @@
 
 # Visual Studio cache/options directory
 .vs/
+.codex/
 
 # User-specific files
 *.suo
