@@ -1,0 +1,310 @@
+{
+  "171": {
+    "inputs": {
+      "sampler_name": "euler"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "172": {
+    "inputs": {
+      "steps": 3,
+      "width": [
+        "183",
+        0
+      ],
+      "height": [
+        "183",
+        1
+      ]
+    },
+    "class_type": "Flux2Scheduler",
+    "_meta": {
+      "title": "Flux2Scheduler"
+    }
+  },
+  "173": {
+    "inputs": {
+      "cfg": 5,
+      "model": [
+        "175",
+        0
+      ],
+      "positive": [
+        "182:170",
+        0
+      ],
+      "negative": [
+        "182:168",
+        0
+      ]
+    },
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "CFGGuider"
+    }
+  },
+  "174": {
+    "inputs": {
+      "samples": [
+        "184",
+        0
+      ],
+      "vae": [
+        "179",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "175": {
+    "inputs": {
+      "unet_name": "flux-2-klein-base-4b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "176": {
+    "inputs": {
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "177": {
+    "inputs": {
+      "text": "black and white hand drawn",
+      "clip": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "178": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Negative Prompt)"
+    }
+  },
+  "179": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "180": {
+    "inputs": {
+      "width": [
+        "183",
+        0
+      ],
+      "height": [
+        "183",
+        1
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyFlux2LatentImage",
+    "_meta": {
+      "title": "Empty Flux 2 Latent"
+    }
+  },
+  "181": {
+    "inputs": {
+      "upscale_method": "bilinear",
+      "megapixels": 0.05,
+      "resolution_steps": 1,
+      "image": [
+        "188",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "183": {
+    "inputs": {
+      "image": [
+        "181",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "Get Image Size"
+    }
+  },
+  "184": {
+    "inputs": {
+      "noise": [
+        "185",
+        0
+      ],
+      "guider": [
+        "173",
+        0
+      ],
+      "sampler": [
+        "171",
+        0
+      ],
+      "sigmas": [
+        "172",
+        0
+      ],
+      "latent_image": [
+        "180",
+        0
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "185": {
+    "inputs": {
+      "noise_seed": 8956982954080
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "187": {
+    "inputs": {
+      "images": [
+        "181",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "188": {
+    "inputs": {
+      "image": "webcam/1776003890602.png [temp]",
+      "width": 640,
+      "height": 480,
+      "capture_on_queue": true
+    },
+    "class_type": "WebcamCapture",
+    "_meta": {
+      "title": "Webcam Capture"
+    }
+  },
+  "189": {
+    "inputs": {
+      "compare_view": {
+        "beforeImages": [
+          "/api/view?filename=comfy.compare.a_temp_snnam_00001_.png&subfolder=&type=temp&rand=0.4615017809970101"
+        ],
+        "afterImages": [
+          "/api/view?filename=comfy.compare.b_temp_snnam_00001_.png&subfolder=&type=temp&rand=0.4615017809970101"
+        ]
+      },
+      "image_a": [
+        "188",
+        0
+      ],
+      "image_b": [
+        "174",
+        0
+      ]
+    },
+    "class_type": "ImageCompare",
+    "_meta": {
+      "title": "Image Compare"
+    }
+  },
+  "190": {
+    "inputs": {
+      "images": [
+        "174",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "182:168": {
+    "inputs": {
+      "conditioning": [
+        "178",
+        0
+      ],
+      "latent": [
+        "182:169",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "182:169": {
+    "inputs": {
+      "pixels": [
+        "181",
+        0
+      ],
+      "vae": [
+        "179",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "182:170": {
+    "inputs": {
+      "conditioning": [
+        "177",
+        0
+      ],
+      "latent": [
+        "182:169",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  }
+}

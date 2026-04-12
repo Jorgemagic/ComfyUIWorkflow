@@ -5,12 +5,18 @@ namespace ComfyStreamWorkflow;
 
 internal sealed class ComfyUiLaunchInfo
 {
-    private ComfyUiLaunchInfo(string workingDirectory, string executablePath, IReadOnlyList<string> arguments, bool redirectOutput)
+    private ComfyUiLaunchInfo(
+        string workingDirectory,
+        string executablePath,
+        IReadOnlyList<string> arguments,
+        bool redirectOutput,
+        IReadOnlyDictionary<string, string>? environmentVariables = null)
     {
         WorkingDirectory = workingDirectory;
         ExecutablePath = executablePath;
         Arguments = arguments;
         RedirectOutput = redirectOutput;
+        EnvironmentVariables = environmentVariables ?? new Dictionary<string, string>();
     }
 
     public string WorkingDirectory { get; }
@@ -20,6 +26,8 @@ internal sealed class ComfyUiLaunchInfo
     public IReadOnlyList<string> Arguments { get; }
 
     public bool RedirectOutput { get; }
+
+    public IReadOnlyDictionary<string, string> EnvironmentVariables { get; }
 
     public static bool TryCreate(
         string path,
@@ -77,11 +85,16 @@ internal sealed class ComfyUiLaunchInfo
         {
             FileName = ExecutablePath,
             WorkingDirectory = WorkingDirectory,
-            UseShellExecute = !RedirectOutput,
+            UseShellExecute = false,
             RedirectStandardOutput = RedirectOutput,
             RedirectStandardError = RedirectOutput,
             CreateNoWindow = RedirectOutput,
         };
+
+        foreach (var environmentVariable in EnvironmentVariables)
+        {
+            startInfo.Environment[environmentVariable.Key] = environmentVariable.Value;
+        }
 
         foreach (string argument in Arguments)
         {
@@ -108,7 +121,8 @@ internal sealed class ComfyUiLaunchInfo
             workingDirectory: workspace,
             executablePath: options.PythonExecutable,
             arguments: arguments,
-            redirectOutput: true);
+            redirectOutput: true,
+            environmentVariables: CreateHeadlessEnvironment());
     }
 
     private static ComfyUiLaunchInfo CreatePackagedApp(string executablePath)
@@ -117,7 +131,8 @@ internal sealed class ComfyUiLaunchInfo
             workingDirectory: Path.GetDirectoryName(executablePath) ?? Environment.CurrentDirectory,
             executablePath: executablePath,
             arguments: Array.Empty<string>(),
-            redirectOutput: false);
+            redirectOutput: false,
+            environmentVariables: CreateHeadlessEnvironment());
     }
 
     private static ComfyUiLaunchInfo CreateDesktopAppBackend(
@@ -174,7 +189,6 @@ internal sealed class ComfyUiLaunchInfo
 
         arguments.AddRange(new[]
         {
-            "--log-stdout",
             "--listen",
             options.BaseUri.Host,
             "--port",
@@ -188,7 +202,29 @@ internal sealed class ComfyUiLaunchInfo
             workingDirectory: basePath,
             executablePath: pythonPath,
             arguments: arguments,
-            redirectOutput: true);
+            redirectOutput: false,
+            environmentVariables: CreateHeadlessEnvironment());
+    }
+
+    private static IReadOnlyDictionary<string, string> CreateHeadlessEnvironment()
+    {
+        var environmentVariables = new Dictionary<string, string>
+        {
+            ["PYTHONIOENCODING"] = "utf-8",
+            ["PYTHONUTF8"] = "1",
+            ["TQDM_DISABLE"] = "1",
+        };
+
+        string pythonStartupDirectory = Path.Combine(AppContext.BaseDirectory, "PythonStartup");
+        if (Directory.Exists(pythonStartupDirectory))
+        {
+            string? existingPythonPath = Environment.GetEnvironmentVariable("PYTHONPATH");
+            environmentVariables["PYTHONPATH"] = string.IsNullOrWhiteSpace(existingPythonPath)
+                ? pythonStartupDirectory
+                : string.Join(Path.PathSeparator, pythonStartupDirectory, existingPythonPath);
+        }
+
+        return environmentVariables;
     }
 
     private static string? TryReadDesktopBasePath(string configPath)

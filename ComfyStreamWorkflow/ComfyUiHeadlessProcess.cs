@@ -8,6 +8,7 @@ internal sealed class ComfyUiHeadlessProcess : IAsyncDisposable
     private readonly HttpClient httpClient;
     private Process? process;
     private bool startedByThisInstance;
+    private bool isKnownReachable;
 
     public ComfyUiHeadlessProcess(ComfyStreamWorkflowOptions options, HttpClient httpClient)
     {
@@ -17,8 +18,14 @@ internal sealed class ComfyUiHeadlessProcess : IAsyncDisposable
 
     public async Task EnsureStartedAsync(CancellationToken cancellationToken)
     {
+        if (isKnownReachable && process?.HasExited != true)
+        {
+            return;
+        }
+
         if (await IsComfyUiReachableAsync(cancellationToken))
         {
+            isKnownReachable = true;
             return;
         }
 
@@ -45,6 +52,7 @@ internal sealed class ComfyUiHeadlessProcess : IAsyncDisposable
         }
 
         await WaitUntilReachableAsync(cancellationToken);
+        isKnownReachable = true;
     }
 
     public async ValueTask DisposeAsync()

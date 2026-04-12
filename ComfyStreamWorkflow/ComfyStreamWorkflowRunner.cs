@@ -1,4 +1,6 @@
 using System.Net.WebSockets;
+using System.Net.Http.Headers;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -11,6 +13,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
     private readonly HttpClient httpClient;
     private readonly ComfyUiHeadlessProcess headlessProcess;
     private readonly string clientId = Guid.NewGuid().ToString();
+    private ClientWebSocket? webSocket;
 
     public ComfyStreamWorkflowRunner(ComfyStreamWorkflowOptions? options = null)
     {
@@ -71,17 +74,48 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(workflow);
 
+        JsonObject inMemoryWorkflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(workflow);
+        return await ExecutePreparedWorkflowAsync(inMemoryWorkflow, cancellationToken);
+    }
+
+    public async Task<ComfyStreamWorkflowResult> ExecutePreparedWorkflowAndWaitAsync(
+        JsonObject workflow,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var timeoutCts = timeout.HasValue
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+
+        if (timeoutCts != null)
+        {
+            timeoutCts.CancelAfter(timeout.GetValueOrDefault());
+        }
+
+        CancellationToken waitToken = timeoutCts?.Token ?? cancellationToken;
+
+        return await ExecutePreparedWorkflowAsync(workflow, waitToken);
+    }
+
+    public async Task<ComfyStreamWorkflowResult> ExecutePreparedWorkflowAsync(
+        JsonObject workflow,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(workflow);
+
         await headlessProcess.EnsureStartedAsync(cancellationToken);
 
-        JsonObject inMemoryWorkflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(workflow);
+        ClientWebSocket activeWebSocket = await GetOrCreateWebSocketAsync(cancellationToken);
 
-        using var webSocket = new ClientWebSocket();
-        await webSocket.ConnectAsync(BuildWebSocketUri(), cancellationToken);
+        var queueStart = Stopwatch.GetTimestamp();
+        string promptId = await QueuePromptAsync(workflow, cancellationToken);
+        TimeSpan queueDuration = Stopwatch.GetElapsedTime(queueStart);
 
-        string promptId = await QueuePromptAsync(inMemoryWorkflow, cancellationToken);
-        IReadOnlyList<ComfyGeneratedImage> images = await WaitForImagesAsync(webSocket, promptId, cancellationToken);
+        var waitStart = Stopwatch.GetTimestamp();
+        IReadOnlyList<ComfyGeneratedImage> images = await WaitForImagesAsync(activeWebSocket, promptId, cancellationToken);
+        TimeSpan waitDuration = Stopwatch.GetElapsedTime(waitStart);
 
-        return new ComfyStreamWorkflowResult(promptId, images);
+        return new ComfyStreamWorkflowResult(promptId, images, queueDuration, waitDuration);
     }
 
     public async Task SaveImageAsync(
@@ -105,10 +139,93 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         await File.WriteAllBytesAsync(outputPath, image.Bytes, cancellationToken);
     }
 
+    public async Task<ComfyUploadedImage> UploadImageAsync(
+        byte[] imageBytes,
+        string filename,
+        string? subfolder = null,
+        string type = "input",
+        bool overwrite = true,
+        string contentType = "image/png",
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imageBytes);
+
+        if (string.IsNullOrWhiteSpace(filename))
+        {
+            throw new ArgumentException("Filename cannot be null or empty.", nameof(filename));
+        }
+
+        await headlessProcess.EnsureStartedAsync(cancellationToken);
+
+        using var form = new MultipartFormDataContent();
+        using var imageContent = new ByteArrayContent(imageBytes);
+
+        imageContent.Headers.ContentType = new(contentType);
+        form.Add(imageContent, "image", filename);
+        form.Add(new StringContent(type), "type");
+        form.Add(new StringContent(overwrite ? "true" : "false"), "overwrite");
+
+        if (!string.IsNullOrWhiteSpace(subfolder))
+        {
+            form.Add(new StringContent(subfolder), "subfolder");
+        }
+
+        using var response = await httpClient.PostAsync("upload/image", form, cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var json = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
+
+        string uploadedFilename = json.RootElement.TryGetProperty("name", out JsonElement nameElement)
+            ? nameElement.GetString() ?? filename
+            : filename;
+        string uploadedSubfolder = json.RootElement.TryGetProperty("subfolder", out JsonElement subfolderElement)
+            ? subfolderElement.GetString() ?? string.Empty
+            : string.Empty;
+        string uploadedType = json.RootElement.TryGetProperty("type", out JsonElement typeElement)
+            ? typeElement.GetString() ?? type
+            : type;
+
+        return new ComfyUploadedImage(uploadedFilename, uploadedSubfolder, uploadedType);
+    }
+
     public async ValueTask DisposeAsync()
     {
+        if (webSocket is not null)
+        {
+            if (webSocket.State == WebSocketState.Open)
+            {
+                try
+                {
+                    await webSocket.CloseAsync(
+                        WebSocketCloseStatus.NormalClosure,
+                        "ComfyStreamWorkflowRunner disposed.",
+                        CancellationToken.None);
+                }
+                catch (WebSocketException)
+                {
+                }
+            }
+
+            webSocket.Dispose();
+        }
+
         httpClient.Dispose();
         await headlessProcess.DisposeAsync();
+    }
+
+    private async Task<ClientWebSocket> GetOrCreateWebSocketAsync(CancellationToken cancellationToken)
+    {
+        if (webSocket?.State == WebSocketState.Open)
+        {
+            return webSocket;
+        }
+
+        webSocket?.Dispose();
+        webSocket = new ClientWebSocket();
+        await webSocket.ConnectAsync(BuildWebSocketUri(), cancellationToken);
+
+        return webSocket;
     }
 
     private async Task<string> QueuePromptAsync(JsonObject workflow, CancellationToken cancellationToken)

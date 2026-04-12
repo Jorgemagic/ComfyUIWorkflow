@@ -13,8 +13,11 @@
 
   <ItemGroup>
     <Compile Remove="ComfyStreamWorkflow\**\*.cs" />
+    <Compile Remove="WebCamComfyStream\**\*.cs" />
     <EmbeddedResource Remove="ComfyStreamWorkflow\**" />
+    <EmbeddedResource Remove="WebCamComfyStream\**" />
     <None Remove="ComfyStreamWorkflow\**" />
+    <None Remove="WebCamComfyStream\**" />
   </ItemGroup>
 
   <ItemGroup>

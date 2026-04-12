@@ -1,0 +1,41 @@
+{
+  "1": {
+    "inputs": {
+      "image": "webcam/1776004991623.png [temp]",
+      "width": 640,
+      "height": 480,
+      "capture_on_queue": true
+    },
+    "class_type": "WebcamCapture",
+    "_meta": {
+      "title": "Webcam Capture"
+    }
+  },
+  "2": {
+    "inputs": {
+      "low_threshold": 100,
+      "high_threshold": 200,
+      "resolution": 512,
+      "image": [
+        "1",
+        0
+      ]
+    },
+    "class_type": "CannyEdgePreprocessor",
+    "_meta": {
+      "title": "Canny Edge"
+    }
+  },
+  "3": {
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  }
+}
