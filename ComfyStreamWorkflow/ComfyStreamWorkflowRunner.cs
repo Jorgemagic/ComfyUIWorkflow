@@ -22,11 +22,46 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         headlessProcess = new ComfyUiHeadlessProcess(this.options, httpClient);
     }
 
+    public async Task<JsonObject> GetWorkflowAsync(
+        string workflowPath,
+        CancellationToken cancellationToken = default)
+    {
+        return await ComfyWorkflowInMemoryTransformer.LoadWorkflowAsync(workflowPath, cancellationToken);
+    }
+
+    public async Task<ComfyStreamWorkflowResult> ExecuteWorkflowAndWaitAsync(
+        JsonObject workflow,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        using var timeoutCts = timeout.HasValue
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : null;
+
+        if (timeoutCts != null)
+        {
+            timeoutCts.CancelAfter(timeout.GetValueOrDefault());
+        }
+
+        CancellationToken waitToken = timeoutCts?.Token ?? cancellationToken;
+
+        return await ExecuteWorkflowAsync(workflow, waitToken);
+    }
+
+    public async Task<ComfyStreamWorkflowResult> ExecuteWorkflowAndWaitAsync(
+        string workflowPath,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        JsonObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
+        return await ExecuteWorkflowAndWaitAsync(workflow, timeout, cancellationToken);
+    }
+
     public async Task<ComfyStreamWorkflowResult> ExecuteWorkflowAsync(
         string workflowPath,
         CancellationToken cancellationToken = default)
     {
-        JsonObject workflow = await ComfyWorkflowInMemoryTransformer.LoadWorkflowAsync(workflowPath, cancellationToken);
+        JsonObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
         return await ExecuteWorkflowAsync(workflow, cancellationToken);
     }
 
@@ -47,6 +82,27 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         IReadOnlyList<ComfyGeneratedImage> images = await WaitForImagesAsync(webSocket, promptId, cancellationToken);
 
         return new ComfyStreamWorkflowResult(promptId, images);
+    }
+
+    public async Task SaveImageAsync(
+        ComfyGeneratedImage image,
+        string outputPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (string.IsNullOrWhiteSpace(outputPath))
+        {
+            throw new ArgumentException("Output path cannot be null or empty.", nameof(outputPath));
+        }
+
+        string? directory = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        await File.WriteAllBytesAsync(outputPath, image.Bytes, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()

@@ -6,13 +6,12 @@ namespace ComfyStreamWorkflow
 
         static async Task Main(string[] args)
         {
-            string workflowPath = "Text2Img.json";
             string comfyUiBaseUrl = args.Length > 1 ? args[1] : "http://localhost:8000/";
             string? comfyUiWorkspacePath = ResolveComfyUiWorkspacePath(args);
 
             try
             {
-                await using var runner = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
+                await using var comfyUI = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
                 {
                     BaseUri = new Uri(comfyUiBaseUrl),
                     ComfyUiWorkspacePath = comfyUiWorkspacePath,
@@ -20,25 +19,27 @@ namespace ComfyStreamWorkflow
                     ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
                 });
 
-                Console.WriteLine($"Ejecutando {workflowPath} usando salida de imagen en memoria...");
                 Console.WriteLine($"ComfyUI URL: {comfyUiBaseUrl}");
                 Console.WriteLine($"ComfyUI workspace: {comfyUiWorkspacePath ?? "not provided"}");
 
-                ComfyStreamWorkflowResult result = await runner.ExecuteWorkflowAsync(workflowPath);
-                ComfyGeneratedImage? firstImage = result.Images.FirstOrDefault();
+                var workflow = await comfyUI.GetWorkflowAsync("Text2Img.json");
+                workflow["14"]!.AsObject()["inputs"]!.AsObject()["text"] =
+                    "A highly realistic astronaut cat floating in outer space, wearing a detailed NASA-style astronaut suit with reflective helmet visor, ultra-realistic fur texture visible inside the helmet, cinematic lighting, Earth visible in the background, stars and nebulae surrounding the scene, photorealistic, ultra-detailed, 8k resolution, depth of field, dramatic lighting, space photography style, sharp focus, professional photography, realistic reflections on the helmet";
+
+                var promptResponse = await comfyUI.ExecuteWorkflowAndWaitAsync(workflow);
+
+                var firstImage = promptResponse.Images.FirstOrDefault();
 
                 if (firstImage is null)
                 {
-                    Console.WriteLine("El workflow no devolvio ninguna imagen.");
+                    Console.WriteLine("No images found in the workflow output.");
                     return;
                 }
 
                 string outputPath = Path.Combine(AppContext.BaseDirectory, "result-in-memory.png");
-                await File.WriteAllBytesAsync(outputPath, firstImage.Bytes);
+                await comfyUI.SaveImageAsync(firstImage, outputPath);
 
-                Console.WriteLine($"Prompt finalizado: {result.PromptId}");
-                Console.WriteLine($"Bytes de imagen recibidos en memoria: {firstImage.Bytes.Length}");
-                Console.WriteLine($"Imagen de prueba escrita en: {outputPath}");
+                Console.WriteLine($"Image received in memory and saved to: {outputPath}");
             }
             catch (InvalidOperationException ex) when (ex.Message.Contains("ComfyUI is not reachable", StringComparison.OrdinalIgnoreCase))
             {
