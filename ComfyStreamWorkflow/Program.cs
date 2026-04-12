@@ -2,25 +2,18 @@ namespace ComfyStreamWorkflow
 {
     internal class Program
     {
-        private const string DefaultComfyUiWorkspacePath = @"C:\Users\jferrero\AppData\Local\Programs\ComfyUI";
-
         static async Task Main(string[] args)
         {
             string comfyUiBaseUrl = args.Length > 1 ? args[1] : "http://localhost:8000/";
-            string? comfyUiWorkspacePath = ResolveComfyUiWorkspacePath(args);
+            string? requestedWorkspacePath = args.Length > 0 ? args[0] : null;
+            ComfyStreamWorkflowOptions options = CreateOptions(comfyUiBaseUrl, requestedWorkspacePath);
 
             try
             {
-                await using var comfyUI = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
-                {
-                    BaseUri = new Uri(comfyUiBaseUrl),
-                    ComfyUiWorkspacePath = comfyUiWorkspacePath,
-                    PythonExecutable = "python",
-                    ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
-                });
+                await using var comfyUI = new ComfyStreamWorkflowRunner(options);
 
                 Console.WriteLine($"ComfyUI URL: {comfyUiBaseUrl}");
-                Console.WriteLine($"ComfyUI workspace: {comfyUiWorkspacePath ?? "not provided"}");
+                Console.WriteLine($"ComfyUI workspace: {options.ComfyUiWorkspacePath ?? "not provided"}");
 
                 var workflow = await comfyUI.GetWorkflowAsync("Text2Img.json");
                 workflow["14"]!.AsObject()["inputs"]!.AsObject()["text"] =
@@ -51,48 +44,22 @@ namespace ComfyStreamWorkflow
             }
         }
 
-        private static string? ResolveComfyUiWorkspacePath(string[] args)
+        private static ComfyStreamWorkflowOptions CreateOptions(string comfyUiBaseUrl, string? requestedWorkspacePath)
         {
-            if (args.Length > 0 && IsComfyUiPath(args[0]))
+            var launchOptions = new ComfyStreamWorkflowOptions
             {
-                return Path.GetFullPath(args[0]);
-            }
+                BaseUri = new Uri(comfyUiBaseUrl),
+                PythonExecutable = "python",
+                ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
+            };
 
-            string? environmentWorkspace = Environment.GetEnvironmentVariable("COMFYUI_WORKSPACE");
-            if (!string.IsNullOrWhiteSpace(environmentWorkspace) && IsComfyUiPath(environmentWorkspace))
+            return new ComfyStreamWorkflowOptions
             {
-                return Path.GetFullPath(environmentWorkspace);
-            }
-
-            if (IsComfyUiPath(DefaultComfyUiWorkspacePath))
-            {
-                return Path.GetFullPath(DefaultComfyUiWorkspacePath);
-            }
-
-            return GetComfyUiWorkspaceCandidates().FirstOrDefault(IsComfyUiPath);
-        }
-
-        private static IEnumerable<string> GetComfyUiWorkspaceCandidates()
-        {
-            string currentDirectory = Environment.CurrentDirectory;
-
-            for (var directory = new DirectoryInfo(currentDirectory); directory != null; directory = directory.Parent)
-            {
-                yield return Path.Combine(directory.FullName, "ComfyUI");
-                yield return Path.Combine(directory.FullName, "comfyui");
-            }
-
-            string? userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(userProfile))
-            {
-                yield return Path.Combine(userProfile, "ComfyUI");
-                yield return Path.Combine(userProfile, "comfyui");
-            }
-        }
-
-        private static bool IsComfyUiPath(string path)
-        {
-            return ComfyUiLaunchInfo.TryCreate(path, new ComfyStreamWorkflowOptions(), out _);
+                BaseUri = launchOptions.BaseUri,
+                ComfyUiWorkspacePath = ComfyUiWorkspaceResolver.Resolve(requestedWorkspacePath, launchOptions),
+                PythonExecutable = launchOptions.PythonExecutable,
+                ExtraComfyUiArguments = launchOptions.ExtraComfyUiArguments
+            };
         }
     }
 }

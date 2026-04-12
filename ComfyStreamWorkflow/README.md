@@ -12,7 +12,7 @@ Ejemplo:
 await using var runner = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
 {
     BaseUri = new Uri("http://localhost:8000/"),
-    ComfyUiWorkspacePath = @"C:\Users\jferrero\AppData\Local\Programs\ComfyUI",
+    ComfyUiWorkspacePath = ComfyUiWorkspaceResolver.Resolve(),
     PythonExecutable = "python",
     ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
 });
@@ -22,4 +22,4 @@ ComfyStreamWorkflowResult result = await runner.ExecuteWorkflowAsync("Text2Img.j
 byte[] pngBytes = result.Images[0].Bytes;
 ```
 
-Si ComfyUI ya esta levantado en `BaseUri`, el runner lo reutiliza. Si no lo esta y `ComfyUiWorkspacePath` apunta a una instalacion valida de ComfyUI, lo arranca como proceso hijo.
+Si ComfyUI ya esta levantado en `BaseUri`, el runner lo reutiliza. Si no lo esta y `ComfyUiWorkspacePath` apunta a una instalacion valida de ComfyUI, lo arranca como proceso hijo. `ComfyUiWorkspaceResolver` busca en la ruta indicada, `COMFYUI_WORKSPACE`, la instalacion de escritorio en AppData y carpetas `ComfyUI` cercanas al directorio actual.

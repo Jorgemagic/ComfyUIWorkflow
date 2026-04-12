@@ -7,9 +7,9 @@ namespace WebCamComfyStream
 {
     internal class Program
     {
-        private const string DefaultComfyUiWorkspacePath = @"C:\Users\jferrero\AppData\Local\Programs\ComfyUI";
-        private const string WorkflowPath = "WebCamCanny.json";
-        private const int CameraIndex = 0;
+        private const string DefaultWorkflowPath = "WebCamCanny.json";
+        private const int DefaultCameraIndex = 0;
+        private const string DefaultComfyUiBaseUrl = "http://localhost:8000/";
         private const string InputImageFilenamePrefix = "webcam_frame_";
         private const string InputImageSubfolder = "webcam";
         private const string InputImageType = "temp";
@@ -23,28 +23,18 @@ namespace WebCamComfyStream
 
         static async Task Main(string[] args)
         {
-            string workflowPath = args.Length > 0 ? args[0] : WorkflowPath;
-            int cameraIndex = args.Length > 1 && int.TryParse(args[1], out int parsedCameraIndex)
-                ? parsedCameraIndex
-                : CameraIndex;
-            string comfyUiBaseUrl = args.Length > 2 ? args[2] : "http://localhost:8000/";
-            bool showStats = args.Any(arg => string.Equals(arg, "--stats", StringComparison.OrdinalIgnoreCase));
+            WebcamStreamOptions streamOptions = WebcamStreamOptions.Parse(args);
+            ComfyStreamWorkflowOptions comfyOptions = CreateComfyOptions(streamOptions);
 
-            await using var comfyUI = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
-            {
-                BaseUri = new Uri(comfyUiBaseUrl),
-                ComfyUiWorkspacePath = DefaultComfyUiWorkspacePath,
-                PythonExecutable = "python",
-                ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
-            });
+            await using var comfyUI = new ComfyStreamWorkflowRunner(comfyOptions);
 
             var workflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(
-                await comfyUI.GetWorkflowAsync(workflowPath));
+                await comfyUI.GetWorkflowAsync(streamOptions.WorkflowPath));
 
-            using var camera = new VideoCapture(cameraIndex);
+            using var camera = new VideoCapture(streamOptions.CameraIndex);
             if (!camera.IsOpened())
             {
-                Console.WriteLine($"Could not open webcam with index {cameraIndex}.");
+                Console.WriteLine($"Could not open webcam with index {streamOptions.CameraIndex}.");
                 return;
             }
 
@@ -53,19 +43,13 @@ namespace WebCamComfyStream
             camera.Set(VideoCaptureProperties.Fps, 30);
 
             using var frame = new Mat();
-            var fpsWindow = Stopwatch.StartNew();
-            int processedFrames = 0;
-            double encodeMilliseconds = 0;
-            double uploadMilliseconds = 0;
-            double executeMilliseconds = 0;
-            double queueMilliseconds = 0;
-            double waitMilliseconds = 0;
-            double decodeMilliseconds = 0;
+            var stats = new PerformanceStats();
 
             Console.WriteLine("Press ESC in the preview window to stop.");
-            Console.WriteLine($"Workflow: {workflowPath}");
-            Console.WriteLine($"ComfyUI URL: {comfyUiBaseUrl}");
-            Console.WriteLine($"Stats: {(showStats ? "on" : "off")} (pass --stats to enable)");
+            Console.WriteLine($"Workflow: {streamOptions.WorkflowPath}");
+            Console.WriteLine($"ComfyUI URL: {streamOptions.ComfyUiBaseUrl}");
+            Console.WriteLine($"ComfyUI workspace: {comfyOptions.ComfyUiWorkspacePath ?? "not provided"}");
+            Console.WriteLine($"Stats: {(streamOptions.ShowStats ? "on" : "off")} (pass --stats to enable)");
 
             UploadedFrame currentFrame = await CaptureAndUploadFrameAsync(comfyUI, camera, frame, frameIndex: 0);
             int frameIndex = 1;
@@ -83,9 +67,7 @@ namespace WebCamComfyStream
 
                 ComfyStreamWorkflowResult result = await executeTask;
                 ComfyGeneratedImage? outputImage = result.Images.LastOrDefault();
-                executeMilliseconds += Stopwatch.GetElapsedTime(executeStart).TotalMilliseconds;
-                queueMilliseconds += result.QueueDuration.TotalMilliseconds;
-                waitMilliseconds += result.WaitDuration.TotalMilliseconds;
+                stats.AddExecution(Stopwatch.GetElapsedTime(executeStart), result);
 
                 var decodeStart = Stopwatch.GetTimestamp();
                 if (outputImage is not null)
@@ -97,7 +79,7 @@ namespace WebCamComfyStream
                 {
                     Cv2.ImShow("WebCamComfyStream", frame);
                 }
-                decodeMilliseconds += Stopwatch.GetElapsedTime(decodeStart).TotalMilliseconds;
+                stats.AddDecode(Stopwatch.GetElapsedTime(decodeStart));
 
                 int key = Cv2.WaitKey(1);
                 UploadedFrame nextFrame = await nextFrameTask;
@@ -106,40 +88,11 @@ namespace WebCamComfyStream
                     break;
                 }
 
-                encodeMilliseconds += nextFrame.EncodeMilliseconds;
-                uploadMilliseconds += nextFrame.UploadMilliseconds;
+                stats.AddUpload(nextFrame);
                 currentFrame = nextFrame;
 
                 TimeSpan elapsed = Stopwatch.GetElapsedTime(frameStart);
-                processedFrames++;
-                if (showStats && fpsWindow.Elapsed >= TimeSpan.FromSeconds(2))
-                {
-                    double fps = processedFrames / fpsWindow.Elapsed.TotalSeconds;
-                    Console.WriteLine($"FPS: {fps:0.0} | Last frame: {elapsed.TotalMilliseconds:0} ms");
-                    Console.WriteLine(
-                        $"Avg ms | encode: {encodeMilliseconds / processedFrames:0.0} | upload: {uploadMilliseconds / processedFrames:0.0} | comfy: {executeMilliseconds / processedFrames:0.0} | decode/show: {decodeMilliseconds / processedFrames:0.0}");
-                    Console.WriteLine(
-                        $"Comfy detail | queue: {queueMilliseconds / processedFrames:0.0} | wait: {waitMilliseconds / processedFrames:0.0}");
-                    fpsWindow.Restart();
-                    processedFrames = 0;
-                    encodeMilliseconds = 0;
-                    uploadMilliseconds = 0;
-                    executeMilliseconds = 0;
-                    queueMilliseconds = 0;
-                    waitMilliseconds = 0;
-                    decodeMilliseconds = 0;
-                }
-                else if (!showStats && fpsWindow.Elapsed >= TimeSpan.FromSeconds(2))
-                {
-                    fpsWindow.Restart();
-                    processedFrames = 0;
-                    encodeMilliseconds = 0;
-                    uploadMilliseconds = 0;
-                    executeMilliseconds = 0;
-                    queueMilliseconds = 0;
-                    waitMilliseconds = 0;
-                    decodeMilliseconds = 0;
-                }
+                stats.CompleteFrame(elapsed, streamOptions.ShowStats);
 
                 TimeSpan delay = FrameInterval - elapsed;
                 if (delay > TimeSpan.Zero)
@@ -149,6 +102,24 @@ namespace WebCamComfyStream
             }
 
             Cv2.DestroyAllWindows();
+        }
+
+        private static ComfyStreamWorkflowOptions CreateComfyOptions(WebcamStreamOptions streamOptions)
+        {
+            var launchOptions = new ComfyStreamWorkflowOptions
+            {
+                BaseUri = new Uri(streamOptions.ComfyUiBaseUrl),
+                PythonExecutable = "python",
+                ExtraComfyUiArguments = new[] { "--disable-cuda-malloc" }
+            };
+
+            return new ComfyStreamWorkflowOptions
+            {
+                BaseUri = launchOptions.BaseUri,
+                ComfyUiWorkspacePath = ComfyUiWorkspaceResolver.Resolve(streamOptions.ComfyUiWorkspacePath, launchOptions),
+                PythonExecutable = launchOptions.PythonExecutable,
+                ExtraComfyUiArguments = launchOptions.ExtraComfyUiArguments
+            };
         }
 
         private static void SetWebcamInput(JsonObject workflow, string imagePath, int width, int height)
@@ -229,5 +200,97 @@ namespace WebCamComfyStream
             int Height,
             double EncodeMilliseconds,
             double UploadMilliseconds);
+
+        private sealed record WebcamStreamOptions(
+            string WorkflowPath,
+            int CameraIndex,
+            string ComfyUiBaseUrl,
+            string? ComfyUiWorkspacePath,
+            bool ShowStats)
+        {
+            public static WebcamStreamOptions Parse(string[] args)
+            {
+                string[] positionals = args
+                    .Where(arg => !arg.StartsWith("--", StringComparison.Ordinal))
+                    .ToArray();
+
+                int cameraIndex = positionals.Length > 1 && int.TryParse(positionals[1], out int parsedCameraIndex)
+                    ? parsedCameraIndex
+                    : DefaultCameraIndex;
+
+                return new WebcamStreamOptions(
+                    WorkflowPath: positionals.Length > 0 ? positionals[0] : DefaultWorkflowPath,
+                    CameraIndex: cameraIndex,
+                    ComfyUiBaseUrl: positionals.Length > 2 ? positionals[2] : DefaultComfyUiBaseUrl,
+                    ComfyUiWorkspacePath: positionals.Length > 3 ? positionals[3] : null,
+                    ShowStats: args.Any(arg => string.Equals(arg, "--stats", StringComparison.OrdinalIgnoreCase)));
+            }
+        }
+
+        private sealed class PerformanceStats
+        {
+            private static readonly TimeSpan ReportingInterval = TimeSpan.FromSeconds(2);
+
+            private readonly Stopwatch window = Stopwatch.StartNew();
+            private int processedFrames;
+            private double encodeMilliseconds;
+            private double uploadMilliseconds;
+            private double executeMilliseconds;
+            private double queueMilliseconds;
+            private double waitMilliseconds;
+            private double decodeMilliseconds;
+
+            public void AddUpload(UploadedFrame frame)
+            {
+                encodeMilliseconds += frame.EncodeMilliseconds;
+                uploadMilliseconds += frame.UploadMilliseconds;
+            }
+
+            public void AddExecution(TimeSpan elapsed, ComfyStreamWorkflowResult result)
+            {
+                executeMilliseconds += elapsed.TotalMilliseconds;
+                queueMilliseconds += result.QueueDuration.TotalMilliseconds;
+                waitMilliseconds += result.WaitDuration.TotalMilliseconds;
+            }
+
+            public void AddDecode(TimeSpan elapsed)
+            {
+                decodeMilliseconds += elapsed.TotalMilliseconds;
+            }
+
+            public void CompleteFrame(TimeSpan elapsed, bool showStats)
+            {
+                processedFrames++;
+
+                if (window.Elapsed < ReportingInterval)
+                {
+                    return;
+                }
+
+                if (showStats && processedFrames > 0)
+                {
+                    double fps = processedFrames / window.Elapsed.TotalSeconds;
+                    Console.WriteLine($"FPS: {fps:0.0} | Last frame: {elapsed.TotalMilliseconds:0} ms");
+                    Console.WriteLine(
+                        $"Avg ms | encode: {encodeMilliseconds / processedFrames:0.0} | upload: {uploadMilliseconds / processedFrames:0.0} | comfy: {executeMilliseconds / processedFrames:0.0} | decode/show: {decodeMilliseconds / processedFrames:0.0}");
+                    Console.WriteLine(
+                        $"Comfy detail | queue: {queueMilliseconds / processedFrames:0.0} | wait: {waitMilliseconds / processedFrames:0.0}");
+                }
+
+                Reset();
+            }
+
+            private void Reset()
+            {
+                window.Restart();
+                processedFrames = 0;
+                encodeMilliseconds = 0;
+                uploadMilliseconds = 0;
+                executeMilliseconds = 0;
+                queueMilliseconds = 0;
+                waitMilliseconds = 0;
+                decodeMilliseconds = 0;
+            }
+        }
     }
 }

@@ -1,20 +1,7 @@
 namespace ComfyStreamWorkflow;
 
-public sealed class ComfyUploadedImage
+public sealed record ComfyUploadedImage(string Filename, string Subfolder, string Type)
 {
-    public ComfyUploadedImage(string filename, string subfolder, string type)
-    {
-        Filename = filename;
-        Subfolder = subfolder;
-        Type = type;
-    }
-
-    public string Filename { get; }
-
-    public string Subfolder { get; }
-
-    public string Type { get; }
-
     public string LoadImagePath
     {
         get
