@@ -18,7 +18,7 @@ namespace WebCamComfyStream
             CameraIndex: 0,
             ComfyUiBaseUrl: "http://localhost:8000/",
             ComfyUiWorkspacePath: null,
-            ShowStats: true);
+            ShowStats: false);
 
         private static readonly int[] InputImageEncodingParameters =
         {
