@@ -197,35 +197,12 @@ internal static class WebcamStreamHelper
         return false;
     }
 
-    public sealed record Options(
+    public readonly record struct Options(
         string WorkflowPath,
         int CameraIndex,
         string ComfyUiBaseUrl,
         string? ComfyUiWorkspacePath,
-        bool ShowStats)
-    {
-        private const string DefaultWorkflowPath = "WebCamCanny.json";
-        private const int DefaultCameraIndex = 0;
-        private const string DefaultComfyUiBaseUrl = "http://localhost:8000/";
-
-        public static Options Parse(string[] args)
-        {
-            string[] positionals = args
-                .Where(arg => !arg.StartsWith("--", StringComparison.Ordinal))
-                .ToArray();
-
-            int cameraIndex = positionals.Length > 1 && int.TryParse(positionals[1], out int parsedCameraIndex)
-                ? parsedCameraIndex
-                : DefaultCameraIndex;
-
-            return new Options(
-                WorkflowPath: positionals.Length > 0 ? positionals[0] : DefaultWorkflowPath,
-                CameraIndex: cameraIndex,
-                ComfyUiBaseUrl: positionals.Length > 2 ? positionals[2] : DefaultComfyUiBaseUrl,
-                ComfyUiWorkspacePath: positionals.Length > 3 ? positionals[3] : null,
-                ShowStats: args.Any(arg => string.Equals(arg, "--stats", StringComparison.OrdinalIgnoreCase)));
-        }
-    }
+        bool ShowStats);
 
     public sealed record InputBinding(JObject Inputs, bool HasCaptureSettings)
     {

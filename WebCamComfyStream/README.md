@@ -8,11 +8,15 @@ Uso:
 dotnet run --project WebCamComfyStream\WebCamComfyStream.csproj
 ```
 
-Tambien puedes indicar workflow, indice de camara, URL de ComfyUI y, opcionalmente, la ruta al workspace de ComfyUI:
+El workflow, el indice de camara, la URL de ComfyUI, el workspace y las stats se configuran en `Program.cs`, en `StreamOptions`:
 
-```powershell
-dotnet run --project WebCamComfyStream\WebCamComfyStream.csproj -- "WebcamFluxKlein.json" 0 "http://localhost:8000/"
-dotnet run --project WebCamComfyStream\WebCamComfyStream.csproj -- "WebcamFluxKlein.json" 0 "http://localhost:8000/" "D:\Ruta\A\ComfyUI" --stats
+```csharp
+private static readonly WebcamStreamHelper.Options StreamOptions = new(
+    WorkflowPath: "WebCamCanny.json",
+    CameraIndex: 0,
+    ComfyUiBaseUrl: "http://localhost:8000/",
+    ComfyUiWorkspacePath: null,
+    ShowStats: false);
 ```
 
 La ruta al workflow se busca primero desde el directorio actual y despues desde el directorio de salida del proyecto, asi que el uso por defecto funciona al ejecutar con `dotnet run --project`.

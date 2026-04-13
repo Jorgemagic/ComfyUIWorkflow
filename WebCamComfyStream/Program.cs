@@ -12,15 +12,23 @@ namespace WebCamComfyStream
         private const string InputImageType = "temp";
         private const string InputImageContentType = "image/jpeg";
         private static readonly TimeSpan ProcessingInterval = TimeSpan.FromMilliseconds(33);
+
+        private static readonly WebcamStreamHelper.Options StreamOptions = new(
+            WorkflowPath: "WebCamCanny.json",
+            CameraIndex: 0,
+            ComfyUiBaseUrl: "http://localhost:8000/",
+            ComfyUiWorkspacePath: null,
+            ShowStats: true);
+
         private static readonly int[] InputImageEncodingParameters =
         {
             (int)ImwriteFlags.JpegQuality,
             90
         };
 
-        static async Task Main(string[] args)
+        static async Task Main()
         {
-            WebcamStreamHelper.Options streamOptions = WebcamStreamHelper.Options.Parse(args);
+            WebcamStreamHelper.Options streamOptions = StreamOptions;
             ComfyStreamWorkflowOptions comfyOptions = CreateComfyOptions(streamOptions);
 
             await using var comfyUI = new ComfyStreamWorkflowRunner(comfyOptions);
@@ -101,7 +109,7 @@ namespace WebCamComfyStream
             Console.WriteLine($"Stream resolution: {WebcamStreamHelper.TargetWidth}x{WebcamStreamHelper.TargetHeight}");
             Console.WriteLine($"ComfyUI URL: {streamOptions.ComfyUiBaseUrl}");
             Console.WriteLine($"ComfyUI workspace: {comfyOptions.ComfyUiWorkspacePath ?? "not provided"}");
-            Console.WriteLine($"Stats: {(streamOptions.ShowStats ? "on" : "off")} (pass --stats to enable)");
+            Console.WriteLine($"Stats: {(streamOptions.ShowStats ? "on" : "off")}");
         }
 
         private static async Task RequestStopAsync(
