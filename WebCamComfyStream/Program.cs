@@ -14,11 +14,11 @@ namespace WebCamComfyStream
         private static readonly TimeSpan ProcessingInterval = TimeSpan.FromMilliseconds(33);
 
         private static readonly WebcamStreamHelper.Options StreamOptions = new(
-            WorkflowPath: "WebCamCanny.json",
+            WorkflowPath: "WebcamFluxKlein2.json",
             CameraIndex: 0,
             ComfyUiBaseUrl: "http://localhost:8000/",
             ComfyUiWorkspacePath: null,
-            ShowStats: true);
+            ShowStats: false);
 
         private static readonly int[] InputImageEncodingParameters =
         {

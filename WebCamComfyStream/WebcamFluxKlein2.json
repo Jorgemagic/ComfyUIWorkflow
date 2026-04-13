@@ -199,21 +199,9 @@
       "title": "RandomNoise"
     }
   },
-  "187": {
-    "inputs": {
-      "images": [
-        "181",
-        0
-      ]
-    },
-    "class_type": "PreviewImage",
-    "_meta": {
-      "title": "Preview Image"
-    }
-  },
   "188": {
     "inputs": {
-      "image": "webcam/1776003890602.png [temp]",
+      "image": "webcam/1776075988435.png [temp]",
       "width": 640,
       "height": 480,
       "capture_on_queue": true
@@ -221,30 +209,6 @@
     "class_type": "WebcamCapture",
     "_meta": {
       "title": "Webcam Capture"
-    }
-  },
-  "189": {
-    "inputs": {
-      "compare_view": {
-        "beforeImages": [
-          "/api/view?filename=comfy.compare.a_temp_snnam_00001_.png&subfolder=&type=temp&rand=0.4615017809970101"
-        ],
-        "afterImages": [
-          "/api/view?filename=comfy.compare.b_temp_snnam_00001_.png&subfolder=&type=temp&rand=0.4615017809970101"
-        ]
-      },
-      "image_a": [
-        "188",
-        0
-      ],
-      "image_b": [
-        "174",
-        0
-      ]
-    },
-    "class_type": "ImageCompare",
-    "_meta": {
-      "title": "Image Compare"
     }
   },
   "190": {
