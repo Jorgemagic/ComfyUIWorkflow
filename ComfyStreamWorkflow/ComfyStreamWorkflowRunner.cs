@@ -135,7 +135,8 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
             Directory.CreateDirectory(directory);
         }
 
-        await File.WriteAllBytesAsync(outputPath, image.Bytes, cancellationToken);
+        await using FileStream output = File.Create(outputPath);
+        await output.WriteAsync(image.Bytes, cancellationToken);
     }
 
     public async Task InterruptAsync(CancellationToken cancellationToken = default)
@@ -271,7 +272,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
 
             if (message.MessageType == WebSocketMessageType.Binary)
             {
-                byte[] imageBytes = StripComfyBinaryHeader(message.Payload);
+                ReadOnlyMemory<byte> imageBytes = StripComfyBinaryHeader(message.Payload);
                 images.Add(new ComfyGeneratedImage(imageBytes, "image/png"));
                 continue;
             }
@@ -295,7 +296,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         throw new InvalidOperationException("ComfyUI WebSocket closed before the prompt finished.");
     }
 
-    private byte[] StripComfyBinaryHeader(byte[] payload)
+    private ReadOnlyMemory<byte> StripComfyBinaryHeader(ReadOnlyMemory<byte> payload)
     {
         if (payload.Length <= options.ImageBinaryHeaderBytes)
         {
@@ -305,11 +306,12 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         return payload[options.ImageBinaryHeaderBytes..];
     }
 
-    private static bool IsPromptFinished(byte[] payload, string promptId, out string? error)
+    private static bool IsPromptFinished(ReadOnlyMemory<byte> payload, string promptId, out string? error)
     {
         error = null;
 
-        JObject root = JObject.Parse(Encoding.UTF8.GetString(payload));
+        string json = Encoding.UTF8.GetString(payload.Span);
+        JObject root = JObject.Parse(json);
 
         string? type = root["type"]?.Value<string>();
 
@@ -327,7 +329,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
 
         if (string.Equals(type, "execution_error", StringComparison.Ordinal))
         {
-            error = $"ComfyUI execution error: {Encoding.UTF8.GetString(payload)}";
+            error = $"ComfyUI execution error: {json}";
             return true;
         }
 
@@ -374,8 +376,15 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         }
         while (!result.EndOfMessage);
 
+        if (stream.TryGetBuffer(out ArraySegment<byte> segment) && segment.Array is not null)
+        {
+            return new WebSocketMessage(
+                result.MessageType,
+                segment.Array.AsMemory(segment.Offset, segment.Count));
+        }
+
         return new WebSocketMessage(result.MessageType, stream.ToArray());
     }
 
-    private sealed record WebSocketMessage(WebSocketMessageType MessageType, byte[] Payload);
+    private sealed record WebSocketMessage(WebSocketMessageType MessageType, ReadOnlyMemory<byte> Payload);
 }

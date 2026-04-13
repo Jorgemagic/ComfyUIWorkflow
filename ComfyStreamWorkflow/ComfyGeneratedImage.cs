@@ -1,3 +1,3 @@
 namespace ComfyStreamWorkflow;
 
-public sealed record ComfyGeneratedImage(byte[] Bytes, string ContentType);
+public sealed record ComfyGeneratedImage(ReadOnlyMemory<byte> Bytes, string ContentType);

@@ -49,6 +49,7 @@ internal static class WebcamStreamHelper
     public static CapturedFrame CaptureJpeg(
         VideoCapture camera,
         Mat frame,
+        Mat resizedFrame,
         int[] encodingParameters)
     {
         if (!camera.Read(frame) || frame.Empty())
@@ -57,8 +58,7 @@ internal static class WebcamStreamHelper
         }
 
         var encodeStart = Stopwatch.GetTimestamp();
-        using Mat? resizedFrame = ResizeToTargetIfNeeded(frame);
-        Mat frameToEncode = resizedFrame ?? frame;
+        Mat frameToEncode = ResizeToTargetIfNeeded(frame, resizedFrame);
 
         Cv2.ImEncode(".jpg", frameToEncode, out byte[] frameBytes, encodingParameters);
         double encodeMilliseconds = Stopwatch.GetElapsedTime(encodeStart).TotalMilliseconds;
@@ -90,14 +90,13 @@ internal static class WebcamStreamHelper
         inputs[inputName] = value;
     }
 
-    private static Mat? ResizeToTargetIfNeeded(Mat frame)
+    private static Mat ResizeToTargetIfNeeded(Mat frame, Mat resizedFrame)
     {
         if (frame.Width == TargetWidth && frame.Height == TargetHeight)
         {
-            return null;
+            return frame;
         }
 
-        var resizedFrame = new Mat();
         Cv2.Resize(
             frame,
             resizedFrame,
@@ -121,11 +120,7 @@ internal static class WebcamStreamHelper
             {
                 var displayStart = Stopwatch.GetTimestamp();
 
-                using Mat? frameToShow = latestFrame.GetSnapshot();
-                if (frameToShow is not null)
-                {
-                    Cv2.ImShow("WebCamComfyStream", frameToShow);
-                }
+                latestFrame.Show("WebCamComfyStream");
 
                 if (ShouldStop())
                 {
@@ -267,20 +262,23 @@ internal static class WebcamStreamHelper
         private readonly object syncRoot = new();
         private Mat? latestFrame;
 
-        public void Update(Mat frame)
+        public void UpdateOwnedFrame(Mat frame)
         {
             lock (syncRoot)
             {
                 latestFrame?.Dispose();
-                latestFrame = frame.Clone();
+                latestFrame = frame;
             }
         }
 
-        public Mat? GetSnapshot()
+        public void Show(string windowName)
         {
             lock (syncRoot)
             {
-                return latestFrame?.Clone();
+                if (latestFrame is not null)
+                {
+                    Cv2.ImShow(windowName, latestFrame);
+                }
             }
         }
 

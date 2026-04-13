@@ -18,7 +18,7 @@ namespace WebCamComfyStream
             CameraIndex: 0,
             ComfyUiBaseUrl: "http://localhost:8000/",
             ComfyUiWorkspacePath: null,
-            ShowStats: false);
+            ShowStats: true);
 
         private static readonly int[] InputImageEncodingParameters =
         {
@@ -155,10 +155,12 @@ namespace WebCamComfyStream
             CancellationToken cancellationToken)
         {
             using var frame = new Mat();
+            using var resizedFrame = new Mat();
             UploadedFrame currentFrame = await CaptureAndUploadFrameAsync(
                 comfyUI,
                 camera,
                 frame,
+                resizedFrame,
                 frameIndex: 0,
                 cancellationToken);
             int frameIndex = 1;
@@ -177,6 +179,7 @@ namespace WebCamComfyStream
                     comfyUI,
                     camera,
                     frame,
+                    resizedFrame,
                     frameIndex++,
                     cancellationToken);
 
@@ -216,8 +219,17 @@ namespace WebCamComfyStream
                 var decodeStart = Stopwatch.GetTimestamp();
                 if (outputImage is not null)
                 {
-                    using var processedFrame = Cv2.ImDecode(outputImage.Bytes, ImreadModes.Color);
-                    latestFrame.Update(processedFrame);
+                    Mat? processedFrame = null;
+                    try
+                    {
+                        processedFrame = Cv2.ImDecode(outputImage.Bytes.Span, ImreadModes.Color);
+                        latestFrame.UpdateOwnedFrame(processedFrame);
+                        processedFrame = null;
+                    }
+                    finally
+                    {
+                        processedFrame?.Dispose();
+                    }
                 }
                 stats.AddDecode(Stopwatch.GetElapsedTime(decodeStart));
 
@@ -240,12 +252,14 @@ namespace WebCamComfyStream
             ComfyStreamWorkflowRunner comfyUI,
             VideoCapture camera,
             Mat frame,
+            Mat resizedFrame,
             int frameIndex,
             CancellationToken cancellationToken)
         {
             WebcamStreamHelper.CapturedFrame capturedFrame = WebcamStreamHelper.CaptureJpeg(
                 camera,
                 frame,
+                resizedFrame,
                 InputImageEncodingParameters);
 
             string filename = $"{InputImageFilenamePrefix}{frameIndex % 2}.jpg";
