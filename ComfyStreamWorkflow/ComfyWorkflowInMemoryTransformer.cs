@@ -12,9 +12,18 @@ public static class ComfyWorkflowInMemoryTransformer
 
     public static JObject ReplaceFileOutputsWithWebSocketOutputs(JObject workflow)
     {
+        return ReplaceFileOutputsWithWebSocketOutputs(workflow, outputWidth: null, outputHeight: null);
+    }
+
+    public static JObject ReplaceFileOutputsWithWebSocketOutputs(
+        JObject workflow,
+        int? outputWidth,
+        int? outputHeight)
+    {
         ArgumentNullException.ThrowIfNull(workflow);
 
         var clone = (JObject)workflow.DeepClone();
+        int nextNodeId = GetNextNumericNodeId(clone);
 
         foreach (JProperty property in clone.Properties().ToArray())
         {
@@ -35,10 +44,21 @@ public static class ComfyWorkflowInMemoryTransformer
                 throw new InvalidOperationException($"Output node '{classType}' does not contain an 'images' input.");
             }
 
+            JToken websocketInput = imagesInput.DeepClone();
+            if (outputWidth.HasValue && outputHeight.HasValue)
+            {
+                string scaleNodeId = (nextNodeId++).ToString();
+                clone[scaleNodeId] = CreateImageScaleNode(
+                    imagesInput,
+                    outputWidth.Value,
+                    outputHeight.Value);
+                websocketInput = new JArray(scaleNodeId, 0);
+            }
+
             nodeObject["class_type"] = "SaveImageWebsocket";
             nodeObject["inputs"] = new JObject
             {
-                ["images"] = imagesInput.DeepClone(),
+                ["images"] = websocketInput,
             };
             nodeObject["_meta"] = new JObject
             {
@@ -47,6 +67,41 @@ public static class ComfyWorkflowInMemoryTransformer
         }
 
         return clone;
+    }
+
+    private static int GetNextNumericNodeId(JObject workflow)
+    {
+        int maxNodeId = 0;
+
+        foreach (JProperty property in workflow.Properties())
+        {
+            if (int.TryParse(property.Name, out int nodeId))
+            {
+                maxNodeId = Math.Max(maxNodeId, nodeId);
+            }
+        }
+
+        return maxNodeId + 1;
+    }
+
+    private static JObject CreateImageScaleNode(JToken imageInput, int width, int height)
+    {
+        return new JObject
+        {
+            ["inputs"] = new JObject
+            {
+                ["image"] = imageInput.DeepClone(),
+                ["upscale_method"] = "bilinear",
+                ["width"] = width,
+                ["height"] = height,
+                ["crop"] = "disabled",
+            },
+            ["class_type"] = "ImageScale",
+            ["_meta"] = new JObject
+            {
+                ["title"] = "Scale Image to Stream Resolution",
+            },
+        };
     }
 
     public static async Task<JObject> LoadWorkflowAsync(

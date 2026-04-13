@@ -7,8 +7,28 @@ namespace WebCamComfyStream;
 
 internal static class WebcamStreamHelper
 {
+    public const int TargetWidth = 640;
+    public const int TargetHeight = 480;
     private static readonly TimeSpan DisplayFrameInterval = TimeSpan.FromMilliseconds(33);
     private static readonly TimeSpan StatsReportingInterval = TimeSpan.FromSeconds(2);
+
+    public static void ApplyTargetResolution(JObject workflow)
+    {
+        ArgumentNullException.ThrowIfNull(workflow);
+
+        foreach (JProperty property in workflow.Properties())
+        {
+            if (property.Value is not JObject nodeObject || nodeObject["inputs"] is not JObject inputs)
+            {
+                continue;
+            }
+
+            SetScalarInput(inputs, "width", TargetWidth);
+            SetScalarInput(inputs, "height", TargetHeight);
+            SetScalarInput(inputs, "resolution", Math.Max(TargetWidth, TargetHeight));
+            SetScalarInput(inputs, "megapixels", TargetWidth * TargetHeight / 1_000_000d);
+        }
+    }
 
     public static VideoCapture? TryOpenCamera(int cameraIndex)
     {
@@ -19,8 +39,8 @@ internal static class WebcamStreamHelper
             return null;
         }
 
-        camera.Set(VideoCaptureProperties.FrameWidth, 640);
-        camera.Set(VideoCaptureProperties.FrameHeight, 480);
+        camera.Set(VideoCaptureProperties.FrameWidth, TargetWidth);
+        camera.Set(VideoCaptureProperties.FrameHeight, TargetHeight);
         camera.Set(VideoCaptureProperties.Fps, 30);
 
         return camera;
@@ -37,14 +57,56 @@ internal static class WebcamStreamHelper
         }
 
         var encodeStart = Stopwatch.GetTimestamp();
-        Cv2.ImEncode(".jpg", frame, out byte[] frameBytes, encodingParameters);
+        using Mat? resizedFrame = ResizeToTargetIfNeeded(frame);
+        Mat frameToEncode = resizedFrame ?? frame;
+
+        Cv2.ImEncode(".jpg", frameToEncode, out byte[] frameBytes, encodingParameters);
         double encodeMilliseconds = Stopwatch.GetElapsedTime(encodeStart).TotalMilliseconds;
 
         return new CapturedFrame(
             frameBytes,
-            frame.Width,
-            frame.Height,
+            frameToEncode.Width,
+            frameToEncode.Height,
             encodeMilliseconds);
+    }
+
+    private static void SetScalarInput(JObject inputs, string inputName, int value)
+    {
+        if (!inputs.TryGetValue(inputName, out JToken? currentValue) || currentValue is JArray)
+        {
+            return;
+        }
+
+        inputs[inputName] = value;
+    }
+
+    private static void SetScalarInput(JObject inputs, string inputName, double value)
+    {
+        if (!inputs.TryGetValue(inputName, out JToken? currentValue) || currentValue is JArray)
+        {
+            return;
+        }
+
+        inputs[inputName] = value;
+    }
+
+    private static Mat? ResizeToTargetIfNeeded(Mat frame)
+    {
+        if (frame.Width == TargetWidth && frame.Height == TargetHeight)
+        {
+            return null;
+        }
+
+        var resizedFrame = new Mat();
+        Cv2.Resize(
+            frame,
+            resizedFrame,
+            new Size(TargetWidth, TargetHeight),
+            fx: 0,
+            fy: 0,
+            interpolation: InterpolationFlags.Area);
+
+        return resizedFrame;
     }
 
     public static async Task RunDisplayLoopAsync(

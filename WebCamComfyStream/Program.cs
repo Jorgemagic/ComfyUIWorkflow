@@ -25,8 +25,12 @@ namespace WebCamComfyStream
 
             await using var comfyUI = new ComfyStreamWorkflowRunner(comfyOptions);
 
-            JObject workflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(
-                await comfyUI.GetWorkflowAsync(streamOptions.WorkflowPath));
+            JObject workflow = await comfyUI.GetWorkflowAsync(streamOptions.WorkflowPath);
+            WebcamStreamHelper.ApplyTargetResolution(workflow);
+            workflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(
+                workflow,
+                WebcamStreamHelper.TargetWidth,
+                WebcamStreamHelper.TargetHeight);
             WebcamStreamHelper.InputBinding webcamInput = WebcamStreamHelper.InputBinding.Find(workflow);
 
             using VideoCapture? camera = WebcamStreamHelper.TryOpenCamera(streamOptions.CameraIndex);
@@ -94,6 +98,7 @@ namespace WebCamComfyStream
         {
             Console.WriteLine("Press ESC in the preview window or terminal to stop.");
             Console.WriteLine($"Workflow: {streamOptions.WorkflowPath}");
+            Console.WriteLine($"Stream resolution: {WebcamStreamHelper.TargetWidth}x{WebcamStreamHelper.TargetHeight}");
             Console.WriteLine($"ComfyUI URL: {streamOptions.ComfyUiBaseUrl}");
             Console.WriteLine($"ComfyUI workspace: {comfyOptions.ComfyUiWorkspacePath ?? "not provided"}");
             Console.WriteLine($"Stats: {(streamOptions.ShowStats ? "on" : "off")} (pass --stats to enable)");
