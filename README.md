@@ -1,73 +1,73 @@
 # ComfyUI Workflow Runner
 
-Cliente y ejemplos en C#/.NET para ejecutar workflows de ComfyUI desde codigo, recibir resultados por WebSocket y probar pipelines de imagen tanto desde texto como desde webcam.
+C#/.NET client and sample apps for running ComfyUI workflows from code, receiving results over WebSocket, and experimenting with image pipelines from both text prompts and a webcam feed.
 
-Este repositorio no reimplementa ComfyUI. Usa ComfyUI como motor Python y aporta una capa .NET para:
+This repository does not reimplement ComfyUI. It uses ComfyUI as the Python engine and adds a .NET layer to:
 
-- cargar workflows JSON de ComfyUI;
-- lanzar prompts contra la API HTTP/WebSocket;
-- transformar salidas `SaveImage` y `PreviewImage` en `SaveImageWebsocket`;
-- recoger imagenes generadas como bytes PNG en memoria;
-- arrancar ComfyUI en modo headless cuando hay un workspace valido;
-- enviar frames de webcam a ComfyUI y mostrar el resultado procesado.
+- load ComfyUI workflow JSON files;
+- submit prompts through the HTTP/WebSocket API;
+- transform `SaveImage` and `PreviewImage` outputs into `SaveImageWebsocket`;
+- collect generated images as in-memory PNG bytes;
+- start ComfyUI headlessly when a valid workspace is available;
+- send webcam frames to ComfyUI and display the processed result.
 
-## Proyectos
+## Projects
 
-| Proyecto | Rol |
+| Project | Purpose |
 | --- | --- |
-| `ComfyStreamWorkflow` | Libreria principal. Gestiona ComfyUI, transforma workflows y devuelve imagenes en memoria. |
-| `ComfyUIWorkflowRun` | Consola de ejemplo para ejecutar un workflow `Text2Img.json` y guardar `result.png`. |
-| `WebCamComfyStream` | Consola de webcam con OpenCvSharp que envia frames a ComfyUI y muestra la salida. |
-| `API` | Cliente ComfyUI mas directo, basado en `/prompt`, `/history`, `/view` y WebSocket. |
+| `ComfyStreamWorkflow` | Main library. Manages ComfyUI, transforms workflows, and returns images in memory. |
+| `ComfyUIWorkflowRun` | Console sample that runs `Text2Img.json` and saves `result.png`. |
+| `WebCamComfyStream` | Webcam console sample using OpenCvSharp to send frames to ComfyUI and display the output. |
+| `API` | Lower-level ComfyUI client built around `/prompt`, `/history`, `/view`, and WebSocket. |
 
-## Requisitos
+## Requirements
 
 - .NET 8 SDK.
-- Una instalacion funcional de ComfyUI con sus dependencias y modelos.
-- Windows para el ejemplo de webcam incluido, porque usa `OpenCvSharp4.runtime.win`.
-- Una webcam disponible si quieres ejecutar `WebCamComfyStream`.
+- A working ComfyUI installation with its dependencies and models.
+- Windows for the included webcam sample, because it uses `OpenCvSharp4.runtime.win`.
+- A webcam if you want to run `WebCamComfyStream`.
 
-ComfyUI puede estar ya levantado en `http://localhost:8000/`, o puedes indicar un workspace para que `ComfyStreamWorkflow` lo arranque como proceso hijo.
+ComfyUI can already be running at `http://localhost:8000/`, or you can provide a workspace path so `ComfyStreamWorkflow` can start it as a child process.
 
-El resolver busca el workspace en este orden aproximado:
+The workspace resolver looks in roughly this order:
 
-- ruta indicada en codigo;
-- variable de entorno `COMFYUI_WORKSPACE`;
-- instalacion de escritorio en `%LOCALAPPDATA%\Programs\ComfyUI`;
-- carpetas `ComfyUI` o `comfyui` cercanas al directorio actual o al perfil de usuario.
+- the path provided in code;
+- the `COMFYUI_WORKSPACE` environment variable;
+- the desktop installation under `%LOCALAPPDATA%\Programs\ComfyUI`;
+- nearby `ComfyUI` or `comfyui` folders from the current directory or user profile.
 
-## Inicio rapido
+## Quick Start
 
 ```powershell
-git clone <url-del-repositorio>
+git clone <repository-url>
 cd ComfyUIWorkflow
 dotnet restore
 dotnet build
 ```
 
-Si ComfyUI no esta ya iniciado, configura el workspace:
+If ComfyUI is not already running, configure the workspace:
 
 ```powershell
-$env:COMFYUI_WORKSPACE = "C:\ruta\a\ComfyUI"
+$env:COMFYUI_WORKSPACE = "C:\path\to\ComfyUI"
 ```
 
-Ejecuta el ejemplo de texto a imagen:
+Run the text-to-image sample:
 
 ```powershell
 dotnet run --project ComfyUIWorkflowRun.csproj
 ```
 
-El ejemplo carga `Text2Img.json`, cambia el prompt desde `Program.cs`, espera a que ComfyUI termine y descarga la primera imagen como `result.png` en el directorio de salida.
+The sample loads `Text2Img.json`, updates the prompt from `Program.cs`, waits for ComfyUI to finish, and downloads the first generated image as `result.png` in the output directory.
 
-Ejecuta el ejemplo de webcam:
+Run the webcam sample:
 
 ```powershell
 dotnet run --project WebCamComfyStream\WebCamComfyStream.csproj
 ```
 
-Pulsa `ESC` en la ventana de preview o en la terminal para detenerlo.
+Press `ESC` in the preview window or terminal to stop it.
 
-## Uso de la libreria
+## Library Usage
 
 ```csharp
 await using var runner = new ComfyStreamWorkflowRunner(new ComfyStreamWorkflowOptions
@@ -85,20 +85,20 @@ byte[] pngBytes = result.Images[0].Bytes.ToArray();
 await runner.SaveImageAsync(result.Images[0], "outputs/result.png");
 ```
 
-Antes de enviar el prompt, la libreria clona el workflow y sustituye nodos de salida de archivo (`SaveImage` y `PreviewImage`) por `SaveImageWebsocket`. Asi la salida vuelve por WebSocket como bytes PNG, sin depender de descargar la imagen desde `/view` ni de escribirla primero en disco.
+Before submitting the prompt, the library clones the workflow and replaces file output nodes (`SaveImage` and `PreviewImage`) with `SaveImageWebsocket`. This lets the output come back over WebSocket as PNG bytes, without depending on `/view` downloads or writing the image to disk first.
 
-## Workflows incluidos
+## Included Workflows
 
-- `Text2Img.json`: workflow de texto a imagen para el ejemplo de consola.
-- `ComfyStreamWorkflow/Text2Img.json`: copia del workflow para la libreria.
-- `WebCamComfyStream/WebCamCanny.json`: workflow de webcam orientado a procesamiento tipo Canny.
-- `WebCamComfyStream/WebcamFluxKlein2.json`: workflow alternativo para la demo de webcam.
+- `Text2Img.json`: text-to-image workflow for the console sample.
+- `ComfyStreamWorkflow/Text2Img.json`: workflow copy used by the library project.
+- `WebCamComfyStream/WebCamCanny.json`: webcam workflow focused on Canny-style processing.
+- `WebCamComfyStream/WebcamFluxKlein2.json`: alternative workflow for the webcam demo.
 
-Para usar tus propios workflows, exportalos desde ComfyUI en formato API JSON. En los workflows de webcam debe existir al menos un nodo `WebcamCapture`, `LoadImage` o `PrimaryInputLoadImage`, porque ahi se inyecta el frame actual.
+To use your own workflows, export them from ComfyUI as API JSON. Webcam workflows must contain at least one `WebcamCapture`, `LoadImage`, or `PrimaryInputLoadImage` node, because that is where the current frame is injected.
 
-## Configuracion frecuente
+## Common Configuration
 
-En `WebCamComfyStream/Program.cs` puedes cambiar:
+In `WebCamComfyStream/Program.cs`, you can change:
 
 ```csharp
 private static readonly WebcamStreamHelper.Options StreamOptions = new(
@@ -109,33 +109,33 @@ private static readonly WebcamStreamHelper.Options StreamOptions = new(
     ShowStats: false);
 ```
 
-- `WorkflowPath`: workflow que procesara cada frame.
-- `CameraIndex`: indice de la camara local.
-- `ComfyUiBaseUrl`: URL del backend de ComfyUI.
-- `ComfyUiWorkspacePath`: ruta explicita a ComfyUI, si no quieres usar `COMFYUI_WORKSPACE`.
-- `ShowStats`: imprime estadisticas de rendimiento cada pocos segundos.
+- `WorkflowPath`: workflow used to process each frame.
+- `CameraIndex`: local camera index.
+- `ComfyUiBaseUrl`: ComfyUI backend URL.
+- `ComfyUiWorkspacePath`: explicit ComfyUI path, if you do not want to use `COMFYUI_WORKSPACE`.
+- `ShowStats`: prints performance stats every few seconds.
 
-## Estructura
+## Structure
 
 ```text
 .
-|-- API/                         # Cliente basico de ComfyUI
-|-- ComfyStreamWorkflow/          # Libreria principal
-|-- WebCamComfyStream/            # Demo de webcam
-|-- Program.cs                    # Demo Text2Img clasica
-|-- Text2Img.json                 # Workflow de ejemplo
+|-- API/                         # Basic ComfyUI client
+|-- ComfyStreamWorkflow/          # Main library
+|-- WebCamComfyStream/            # Webcam demo
+|-- Program.cs                    # Classic Text2Img demo
+|-- Text2Img.json                 # Sample workflow
 |-- ComfyUIWorkflowRun.csproj
 `-- ComfyUIWorkflowRun.sln
 ```
 
-## Notas
+## Notes
 
-- Si ComfyUI ya esta levantado en `BaseUri`, el runner lo reutiliza.
-- Si no esta levantado y hay un workspace valido, el runner intenta iniciarlo con Python.
-- La primera version del stream de webcam sube cada frame mediante `/upload/image`; la salida ya vuelve por WebSocket.
-- Los modelos y custom nodes que use cada workflow deben existir en tu instalacion de ComfyUI.
+- If ComfyUI is already running at `BaseUri`, the runner reuses it.
+- If ComfyUI is not running and a valid workspace is available, the runner tries to start it with Python.
+- The first webcam streaming version uploads each frame through `/upload/image`; the output already returns over WebSocket.
+- Any models and custom nodes used by a workflow must exist in your ComfyUI installation.
 
-## Documentacion adicional
+## More Documentation
 
 - `ComfyStreamWorkflow/README.md`
 - `WebCamComfyStream/README.md`
