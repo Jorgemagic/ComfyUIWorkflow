@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using System.Text.Json;
+using Newtonsoft.Json.Linq;
 
 namespace ComfyStreamWorkflow;
 
@@ -131,7 +131,7 @@ internal sealed class ComfyUiLaunchInfo
             workingDirectory: Path.GetDirectoryName(executablePath) ?? Environment.CurrentDirectory,
             executablePath: executablePath,
             arguments: Array.Empty<string>(),
-            redirectOutput: false,
+            redirectOutput: true,
             environmentVariables: CreateHeadlessEnvironment());
     }
 
@@ -202,7 +202,7 @@ internal sealed class ComfyUiLaunchInfo
             workingDirectory: basePath,
             executablePath: pythonPath,
             arguments: arguments,
-            redirectOutput: false,
+            redirectOutput: true,
             environmentVariables: CreateHeadlessEnvironment());
     }
 
@@ -236,9 +236,8 @@ internal sealed class ComfyUiLaunchInfo
                 return null;
             }
 
-            using var config = JsonDocument.Parse(File.ReadAllText(configPath));
-            if (config.RootElement.TryGetProperty("basePath", out JsonElement basePath)
-                && basePath.GetString() is { Length: > 0 } value)
+            JObject config = JObject.Parse(File.ReadAllText(configPath));
+            if (config["basePath"]?.Value<string>() is { Length: > 0 } value)
             {
                 return value;
             }

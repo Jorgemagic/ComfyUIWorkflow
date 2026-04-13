@@ -57,6 +57,11 @@ internal sealed class ComfyUiHeadlessProcess : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await KillStartedProcessAsync();
+    }
+
+    public async Task KillStartedProcessAsync()
+    {
         if (process is null || !startedByThisInstance)
         {
             return;
@@ -73,6 +78,9 @@ internal sealed class ComfyUiHeadlessProcess : IAsyncDisposable
         finally
         {
             process.Dispose();
+            process = null;
+            startedByThisInstance = false;
+            isKnownReachable = false;
         }
     }
 

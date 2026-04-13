@@ -1,8 +1,8 @@
 using System.Net.WebSockets;
 using System.Diagnostics;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Nodes;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace ComfyStreamWorkflow;
 
@@ -24,7 +24,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         headlessProcess = new ComfyUiHeadlessProcess(this.options, httpClient);
     }
 
-    public async Task<JsonObject> GetWorkflowAsync(
+    public async Task<JObject> GetWorkflowAsync(
         string workflowPath,
         CancellationToken cancellationToken = default)
     {
@@ -32,7 +32,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
     }
 
     public async Task<ComfyStreamWorkflowResult> ExecuteWorkflowAndWaitAsync(
-        JsonObject workflow,
+        JObject workflow,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -55,7 +55,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
-        JsonObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
+        JObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
         return await ExecuteWorkflowAndWaitAsync(workflow, timeout, cancellationToken);
     }
 
@@ -63,22 +63,22 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         string workflowPath,
         CancellationToken cancellationToken = default)
     {
-        JsonObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
+        JObject workflow = await GetWorkflowAsync(workflowPath, cancellationToken);
         return await ExecuteWorkflowAsync(workflow, cancellationToken);
     }
 
     public async Task<ComfyStreamWorkflowResult> ExecuteWorkflowAsync(
-        JsonObject workflow,
+        JObject workflow,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workflow);
 
-        JsonObject inMemoryWorkflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(workflow);
+        JObject inMemoryWorkflow = ComfyWorkflowInMemoryTransformer.ReplaceFileOutputsWithWebSocketOutputs(workflow);
         return await ExecutePreparedWorkflowAsync(inMemoryWorkflow, cancellationToken);
     }
 
     public async Task<ComfyStreamWorkflowResult> ExecutePreparedWorkflowAndWaitAsync(
-        JsonObject workflow,
+        JObject workflow,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
     {
@@ -97,7 +97,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
     }
 
     public async Task<ComfyStreamWorkflowResult> ExecutePreparedWorkflowAsync(
-        JsonObject workflow,
+        JObject workflow,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(workflow);
@@ -138,6 +138,19 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         await File.WriteAllBytesAsync(outputPath, image.Bytes, cancellationToken);
     }
 
+    public async Task InterruptAsync(CancellationToken cancellationToken = default)
+    {
+        await headlessProcess.EnsureStartedAsync(cancellationToken);
+
+        using var response = await httpClient.PostAsync("interrupt", content: null, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task KillStartedComfyUiAsync()
+    {
+        await headlessProcess.KillStartedProcessAsync();
+    }
+
     public async Task<ComfyUploadedImage> UploadImageAsync(
         byte[] imageBytes,
         string filename,
@@ -172,18 +185,12 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         using var response = await httpClient.PostAsync("upload/image", form, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var json = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
+        string responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        JObject json = JObject.Parse(responseJson);
 
-        string uploadedFilename = json.RootElement.TryGetProperty("name", out JsonElement nameElement)
-            ? nameElement.GetString() ?? filename
-            : filename;
-        string uploadedSubfolder = json.RootElement.TryGetProperty("subfolder", out JsonElement subfolderElement)
-            ? subfolderElement.GetString() ?? string.Empty
-            : string.Empty;
-        string uploadedType = json.RootElement.TryGetProperty("type", out JsonElement typeElement)
-            ? typeElement.GetString() ?? type
-            : type;
+        string uploadedFilename = json["name"]?.Value<string>() ?? filename;
+        string uploadedSubfolder = json["subfolder"]?.Value<string>() ?? string.Empty;
+        string uploadedType = json["type"]?.Value<string>() ?? type;
 
         return new ComfyUploadedImage(uploadedFilename, uploadedSubfolder, uploadedType);
     }
@@ -227,28 +234,28 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         return webSocket;
     }
 
-    private async Task<string> QueuePromptAsync(JsonObject workflow, CancellationToken cancellationToken)
+    private async Task<string> QueuePromptAsync(JObject workflow, CancellationToken cancellationToken)
     {
-        var requestBody = new JsonObject
+        var requestBody = new JObject
         {
             ["prompt"] = workflow.DeepClone(),
             ["client_id"] = clientId,
         };
 
-        using var content = new StringContent(requestBody.ToJsonString(), Encoding.UTF8, "application/json");
+        using var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
         using var response = await httpClient.PostAsync("prompt", content, cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var json = await JsonDocument.ParseAsync(responseStream, cancellationToken: cancellationToken);
+        string responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+        JObject json = JObject.Parse(responseJson);
 
-        if (!json.RootElement.TryGetProperty("prompt_id", out JsonElement promptId))
+        string? promptId = json["prompt_id"]?.Value<string>();
+        if (promptId is null)
         {
             throw new InvalidOperationException("ComfyUI /prompt response did not include a prompt_id.");
         }
 
-        return promptId.GetString()
-            ?? throw new InvalidOperationException("ComfyUI /prompt response included an empty prompt_id.");
+        return promptId;
     }
 
     private async Task<IReadOnlyList<ComfyGeneratedImage>> WaitForImagesAsync(
@@ -302,21 +309,16 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
     {
         error = null;
 
-        using var json = JsonDocument.Parse(payload);
-        JsonElement root = json.RootElement;
+        JObject root = JObject.Parse(Encoding.UTF8.GetString(payload));
 
-        string? type = root.TryGetProperty("type", out JsonElement typeElement)
-            ? typeElement.GetString()
-            : null;
+        string? type = root["type"]?.Value<string>();
 
-        if (!root.TryGetProperty("data", out JsonElement data))
+        if (root["data"] is not JObject data)
         {
             return false;
         }
 
-        string? messagePromptId = data.TryGetProperty("prompt_id", out JsonElement promptElement)
-            ? promptElement.GetString()
-            : null;
+        string? messagePromptId = data["prompt_id"]?.Value<string>();
 
         if (!string.Equals(messagePromptId, promptId, StringComparison.Ordinal))
         {
@@ -335,8 +337,7 @@ public sealed class ComfyStreamWorkflowRunner : IAsyncDisposable
         }
 
         return string.Equals(type, "executing", StringComparison.Ordinal)
-            && data.TryGetProperty("node", out JsonElement node)
-            && node.ValueKind == JsonValueKind.Null;
+            && data["node"]?.Type == JTokenType.Null;
     }
 
     private Uri BuildWebSocketUri()

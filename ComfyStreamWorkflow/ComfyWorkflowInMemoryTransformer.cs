@@ -1,4 +1,4 @@
-using System.Text.Json.Nodes;
+using Newtonsoft.Json.Linq;
 
 namespace ComfyStreamWorkflow;
 
@@ -10,47 +10,46 @@ public static class ComfyWorkflowInMemoryTransformer
         "PreviewImage",
     };
 
-    public static JsonObject ReplaceFileOutputsWithWebSocketOutputs(JsonObject workflow)
+    public static JObject ReplaceFileOutputsWithWebSocketOutputs(JObject workflow)
     {
         ArgumentNullException.ThrowIfNull(workflow);
 
-        var clone = JsonNode.Parse(workflow.ToJsonString())?.AsObject()
-            ?? throw new ArgumentException("Workflow JSON is not a valid object.", nameof(workflow));
+        var clone = (JObject)workflow.DeepClone();
 
-        foreach (var (_, node) in clone.ToArray())
+        foreach (JProperty property in clone.Properties().ToArray())
         {
-            if (node is not JsonObject nodeObject)
+            if (property.Value is not JObject nodeObject)
             {
                 continue;
             }
 
-            string? classType = nodeObject["class_type"]?.GetValue<string>();
+            string? classType = nodeObject["class_type"]?.Value<string>();
             if (classType is null || !FileOutputNodeTypes.Contains(classType))
             {
                 continue;
             }
 
-            JsonNode? imagesInput = nodeObject["inputs"]?["images"];
+            JToken? imagesInput = nodeObject["inputs"]?["images"];
             if (imagesInput is null)
             {
                 throw new InvalidOperationException($"Output node '{classType}' does not contain an 'images' input.");
             }
 
             nodeObject["class_type"] = "SaveImageWebsocket";
-            nodeObject["inputs"] = new JsonObject
+            nodeObject["inputs"] = new JObject
             {
-                ["images"] = imagesInput.DeepClone()
+                ["images"] = imagesInput.DeepClone(),
             };
-            nodeObject["_meta"] = new JsonObject
+            nodeObject["_meta"] = new JObject
             {
-                ["title"] = "SaveImageWebsocket"
+                ["title"] = "SaveImageWebsocket",
             };
         }
 
         return clone;
     }
 
-    public static async Task<JsonObject> LoadWorkflowAsync(
+    public static async Task<JObject> LoadWorkflowAsync(
         string workflowPath,
         CancellationToken cancellationToken = default)
     {
@@ -66,10 +65,9 @@ public static class ComfyWorkflowInMemoryTransformer
             throw new FileNotFoundException("Workflow file was not found.", resolvedPath);
         }
 
-        await using var file = File.OpenRead(resolvedPath);
-        JsonNode? workflow = await JsonNode.ParseAsync(file, cancellationToken: cancellationToken);
+        string workflowJson = await File.ReadAllTextAsync(resolvedPath, cancellationToken);
 
-        return workflow?.AsObject()
+        return JObject.Parse(workflowJson)
             ?? throw new InvalidOperationException("Workflow JSON is not a valid object.");
     }
 
