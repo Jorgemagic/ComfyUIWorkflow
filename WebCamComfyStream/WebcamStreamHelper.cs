@@ -302,11 +302,16 @@ internal static class WebcamStreamHelper
         private double queueMilliseconds;
         private double waitMilliseconds;
         private double decodeMilliseconds;
+        private double inputAgeMilliseconds;
 
-        public void AddUpload(double encodeMilliseconds, double uploadMilliseconds)
+        public void AddUpload(
+            double encodeMilliseconds,
+            double uploadMilliseconds,
+            TimeSpan inputAge)
         {
             this.encodeMilliseconds += encodeMilliseconds;
             this.uploadMilliseconds += uploadMilliseconds;
+            inputAgeMilliseconds += inputAge.TotalMilliseconds;
         }
 
         public void AddExecution(TimeSpan elapsed, ComfyStreamWorkflowResult result)
@@ -335,7 +340,7 @@ internal static class WebcamStreamHelper
                 double fps = processedFrames / window.Elapsed.TotalSeconds;
                 Console.WriteLine($"FPS: {fps:0.0} | Last frame: {elapsed.TotalMilliseconds:0} ms");
                 Console.WriteLine(
-                    $"Avg ms | encode: {encodeMilliseconds / processedFrames:0.0} | upload: {uploadMilliseconds / processedFrames:0.0} | comfy: {executeMilliseconds / processedFrames:0.0} | decode: {decodeMilliseconds / processedFrames:0.0}");
+                    $"Avg ms | age: {inputAgeMilliseconds / processedFrames:0.0} | encode: {encodeMilliseconds / processedFrames:0.0} | upload: {uploadMilliseconds / processedFrames:0.0} | comfy: {executeMilliseconds / processedFrames:0.0} | decode: {decodeMilliseconds / processedFrames:0.0}");
                 Console.WriteLine(
                     $"Comfy detail | queue: {queueMilliseconds / processedFrames:0.0} | wait: {waitMilliseconds / processedFrames:0.0}");
             }
@@ -353,6 +358,7 @@ internal static class WebcamStreamHelper
             queueMilliseconds = 0;
             waitMilliseconds = 0;
             decodeMilliseconds = 0;
+            inputAgeMilliseconds = 0;
         }
     }
 }

@@ -156,61 +156,38 @@ namespace WebCamComfyStream
         {
             using var frame = new Mat();
             using var resizedFrame = new Mat();
-            UploadedFrame currentFrame = await CaptureAndUploadFrameAsync(
-                comfyUI,
-                camera,
-                frame,
-                resizedFrame,
-                frameIndex: 0,
-                cancellationToken);
-            int frameIndex = 1;
+            int frameIndex = 0;
 
             while (!cancellationToken.IsCancellationRequested)
             {
                 var frameStart = Stopwatch.GetTimestamp();
 
-                webcamInput.Set(currentFrame.Image.LoadImagePath, currentFrame.Width, currentFrame.Height);
-
-                var executeStart = Stopwatch.GetTimestamp();
-                Task<ComfyStreamWorkflowResult> executeTask = comfyUI.ExecutePreparedWorkflowAndWaitAsync(
-                    workflow,
-                    cancellationToken: cancellationToken);
-                Task<UploadedFrame> nextFrameTask = CaptureAndUploadFrameAsync(
+                UploadedFrame currentFrame = await CaptureAndUploadFrameAsync(
                     comfyUI,
                     camera,
                     frame,
                     resizedFrame,
                     frameIndex++,
                     cancellationToken);
+                stats.AddUpload(
+                    currentFrame.EncodeMilliseconds,
+                    currentFrame.UploadMilliseconds,
+                    Stopwatch.GetElapsedTime(currentFrame.CapturedAt));
+
+                webcamInput.Set(currentFrame.Image.LoadImagePath, currentFrame.Width, currentFrame.Height);
+
+                var executeStart = Stopwatch.GetTimestamp();
 
                 ComfyStreamWorkflowResult result;
                 try
                 {
-                    result = await executeTask;
+                    result = await comfyUI.ExecutePreparedWorkflowAndWaitAsync(
+                        workflow,
+                        cancellationToken: cancellationToken);
                 }
                 catch (Exception) when (cancellationToken.IsCancellationRequested)
                 {
-                    try
-                    {
-                        await nextFrameTask;
-                    }
-                    catch
-                    {
-                    }
-
                     return;
-                }
-                catch
-                {
-                    try
-                    {
-                        await nextFrameTask;
-                    }
-                    catch
-                    {
-                    }
-
-                    throw;
                 }
 
                 ComfyGeneratedImage? outputImage = result.Images.LastOrDefault();
@@ -233,10 +210,6 @@ namespace WebCamComfyStream
                 }
                 stats.AddDecode(Stopwatch.GetElapsedTime(decodeStart));
 
-                UploadedFrame nextFrame = await nextFrameTask;
-                stats.AddUpload(nextFrame.EncodeMilliseconds, nextFrame.UploadMilliseconds);
-                currentFrame = nextFrame;
-
                 TimeSpan elapsed = Stopwatch.GetElapsedTime(frameStart);
                 stats.CompleteFrame(elapsed, showStats);
 
@@ -256,6 +229,7 @@ namespace WebCamComfyStream
             int frameIndex,
             CancellationToken cancellationToken)
         {
+            long capturedAt = Stopwatch.GetTimestamp();
             WebcamStreamHelper.CapturedFrame capturedFrame = WebcamStreamHelper.CaptureJpeg(
                 camera,
                 frame,
@@ -280,7 +254,8 @@ namespace WebCamComfyStream
                 capturedFrame.Width,
                 capturedFrame.Height,
                 capturedFrame.EncodeMilliseconds,
-                uploadMilliseconds);
+                uploadMilliseconds,
+                capturedAt);
         }
 
         private sealed record UploadedFrame(
@@ -288,6 +263,7 @@ namespace WebCamComfyStream
             int Width,
             int Height,
             double EncodeMilliseconds,
-            double UploadMilliseconds);
+            double UploadMilliseconds,
+            long CapturedAt);
     }
 }
